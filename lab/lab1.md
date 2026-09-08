@@ -34,5 +34,3 @@ Question 7: After cloning the GitHub repository into a new temporary folder, the
 ```bash
 dvc pull
 ```
-
-Question 8: After checking out an older commit and running `dvc checkout`, the DVC-tracked `data/` folder changes to the version stored in that commit. The local `BigData/food11_processed` and `BigData/food11_processed_mini` folders remain available because `BigData/` is ignored and is not tracked by Git or DVC.
