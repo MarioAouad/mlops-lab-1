@@ -1,0 +1,32 @@
+# Local environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Datasets and generated ML artifacts
+data/
+BigData/
+mlruns/
+mlflow.db
+
+# Version-control and editor files
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Local configuration and logs
+.env
+.env.*
+*.log
+
+# Build and test output
+build/
+dist/
+*.egg-info/
+.coverage
+htmlcov/
