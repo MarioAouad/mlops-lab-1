@@ -1,5 +1,7 @@
 /data
 /BigData
-
+/src/food11/__pycache__
+/src/mlops_lab_1/__pycache__
+*/__pycache__
 /mlflow.db
 /mlruns
