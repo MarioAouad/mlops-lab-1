@@ -1,5 +1,39 @@
 # MLOps Lab Commands
 
+## Lab 4: Docker Compose
+
+Docker Desktop must be running. From the repository root, initialize the new
+local registry once using your existing trained model:
+
+```powershell
+docker compose up -d --build --wait mlflow
+uv run --locked python -m src.food11.bootstrap
+docker compose up -d --build --wait
+```
+
+MLflow: http://127.0.0.1:5001. Frontend: http://127.0.0.1:8501.
+Inference is internal at `http://inference:8000`.
+
+Daily commands:
+
+```powershell
+docker compose up -d --wait
+docker compose ps
+docker compose logs --tail 100 inference
+docker compose restart inference
+docker compose down
+```
+
+Assign new versions to the `champion` alias, then restart inference. Bootstrap is
+only needed for an empty registry; it is safe to repeat. Do not add `-v` to `down`
+unless you intend to erase the Compose registry and its artifacts.
+
+The full raw dataset is DVC-tracked locally in `BigData/food11_raw.dvc` and has not
+been uploaded to DagsHub. See README.md for data transfer and preparation details.
+
+The remaining commands describe the standalone Lab 3 workflow. Stop the Compose
+stack before starting a host MLflow server on the same port.
+
 Run these commands from the repository root:
 
 ```powershell
@@ -11,7 +45,7 @@ cd "C:\Users\MA21\Desktop\USJ\Final_Year\1th_semeter\ML_Ops\Lab\mlops-lab-1"
 Start MLflow first. The `--host 0.0.0.0` option allows Docker containers to reach the server. MLflow 3.16 reads the host allowlist from `MLFLOW_SERVER_ALLOWED_HOSTS`.
 
 ```powershell
-$env:MLFLOW_SERVER_ALLOWED_HOSTS="*"
+$env:MLFLOW_SERVER_ALLOWED_HOSTS="localhost:*,127.0.0.1:*,host.docker.internal:*"
 uv run python -m mlflow server `
   --host 0.0.0.0 `
   --port 5001 `
@@ -200,15 +234,9 @@ Remove the container:
 docker rm -f food11-api-container
 ```
 
-If MLflow is running in its own terminal, press `Ctrl+C` there. If the
-terminal is no longer available, stop only the MLflow processes listening on
-port `5001`:
-
-```powershell
-Get-NetTCPConnection -State Listen -LocalPort 5001 -ErrorAction SilentlyContinue |
-  Select-Object -ExpandProperty OwningProcess -Unique |
-  ForEach-Object { Stop-Process -Id $_ -Force }
-```
+If host MLflow is running in its own terminal, press `Ctrl+C` there.
+For Compose services, use `docker compose down`. Do not kill a process merely
+because it owns port 5001: with Compose that listener can belong to Docker Desktop.
 
 Verify that the lab services are stopped:
 

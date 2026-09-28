@@ -1,14 +1,21 @@
 import argparse
+import os
+import random
+import subprocess
+import sys
 from pathlib import Path
 
 import mlflow
 import mlflow.pytorch
+import numpy as np
 import torch
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from torchvision.models import ResNet18_Weights
+
+from .data import CATEGORIES
 
 
 NUM_CLASSES = 11
@@ -25,6 +32,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--tracking-uri", default=os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5001"))
     return parser.parse_args()
 
 
@@ -41,10 +50,9 @@ def build_dataloaders(dataset_root: Path, batch_size: int) -> tuple[DataLoader, 
         for split in ("training", "validation", "evaluation")
     }
 
-    if len(datasets_by_split["training"].classes) != NUM_CLASSES:
-        raise ValueError(
-            f"Expected {NUM_CLASSES} classes, found {len(datasets_by_split['training'].classes)}"
-        )
+    for split, dataset in datasets_by_split.items():
+        if dataset.classes != list(CATEGORIES):
+            raise ValueError(f"Incorrect Food-11 class mapping in {split}: {dataset.classes}")
 
     return tuple(
         DataLoader(
@@ -91,12 +99,23 @@ def run_epoch(
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
     args = parse_args()
+    if args.epochs < 1 or args.batch_size < 1 or args.lr <= 0:
+        raise ValueError("Epochs, batch size, and learning rate must be positive")
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     dataset_root = DATASET_ROOTS[args.dataset]
     if not dataset_root.is_dir():
         raise FileNotFoundError(f"Dataset directory does not exist: {dataset_root}")
 
-    mlflow.set_tracking_uri("http://127.0.0.1:5001")
+    mlflow.set_tracking_uri(args.tracking_uri)
     mlflow.set_experiment("food11")
 
     train_loader, validation_loader, test_loader = build_dataloaders(
@@ -118,8 +137,18 @@ def main() -> None:
                 "batch_size": args.batch_size,
                 "model": "resnet18",
                 "device": str(device),
+                "seed": args.seed,
             }
         )
+
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=PROJECT_ROOT,
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            commit = "unavailable"
+        mlflow.set_tag("git_commit", commit)
 
         for epoch in range(args.epochs):
             train_loss, _ = run_epoch(
@@ -140,7 +169,10 @@ def main() -> None:
 
         _, test_accuracy = run_epoch(model, test_loader, loss_function, device)
         mlflow.log_metric("test_accuracy", test_accuracy)
-        mlflow.pytorch.log_model(model, "model", serialization_format="pickle")
+        mlflow.pytorch.log_model(
+            model, name="model", serialization_format="pickle",
+            metadata={"class_names": list(CATEGORIES)},
+        )
         print(f"test_accuracy={test_accuracy:.4f}")
 
 

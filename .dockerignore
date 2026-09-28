@@ -16,6 +16,10 @@ mlflow.db
 # Version-control and editor files
 .git/
 .gitignore
+.github/
+.dvc/
+lab/
+tests/
 .vscode/
 .idea/
 

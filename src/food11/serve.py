@@ -1,96 +1,116 @@
 import io
+import logging
 import os
-from pathlib import Path
+import time
+from contextlib import asynccontextmanager
 
 import mlflow
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from PIL import Image
+from mlflow.exceptions import MlflowException
+from mlflow.pyfunc import load_model
+from PIL import Image, UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_URI = "models:/food11@champion"
+from .data import CATEGORIES
+
 DEFAULT_TRACKING_URI = "http://127.0.0.1:5001"
+DEFAULT_MODEL_URI = "models:/food11@champion"
+CLASS_NAMES = list(CATEGORIES)
+logger = logging.getLogger(__name__)
 
-DATASET_DIR = PROJECT_ROOT / "BigData" / "food11_processed_mini" / "validation"
-CLASS_NAMES = sorted(
-    [path.name for path in DATASET_DIR.iterdir() if path.is_dir()]
-) if DATASET_DIR.exists() else [
-    "Bread",
-    "Dairy product",
-    "Dessert",
-    "Egg",
-    "Fried food",
-    "Meat",
-    "Noodles-Pasta",
-    "Rice",
-    "Seafood",
-    "Soup",
-    "Vegetable-Fruit",
-]
+image_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=ResNet18_Weights.DEFAULT.transforms().mean,
+        std=ResNet18_Weights.DEFAULT.transforms().std,
+    ),
+])
 
-image_transform = transforms.Compose(
-    [
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=ResNet18_Weights.DEFAULT.transforms().mean,
-            std=ResNet18_Weights.DEFAULT.transforms().std,
-        ),
-    ]
-)
 
-app = FastAPI(title="Food11 API")
+def load_model_with_retry(model_uri: str, attempts: int, delay: float):
+    """Retry temporary MLflow failures; report missing aliases without waiting."""
+    if attempts < 1 or delay < 0:
+        raise ValueError("Model load attempts must be positive and delay nonnegative")
+    for attempt in range(1, attempts + 1):
+        try:
+            return load_model(model_uri)
+        except MlflowException as exc:
+            if exc.get_http_status_code() < 500 or attempt == attempts:
+                raise
+            logger.warning("MLflow model load failed (attempt %s/%s): %s", attempt, attempts, exc)
+            time.sleep(delay)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI))
+    model_uri = os.getenv("MODEL_URI", DEFAULT_MODEL_URI)
+    model = await run_in_threadpool(
+        load_model_with_retry,
+        model_uri,
+        int(os.getenv("MODEL_LOAD_ATTEMPTS", "12")),
+        float(os.getenv("MODEL_LOAD_RETRY_DELAY", "5")),
+    )
+    metadata = model.metadata.metadata or {}
+    if metadata.get("class_names", CLASS_NAMES) != CLASS_NAMES:
+        raise ValueError("The model's class mapping does not match Food-11")
+    application.state.model = model
+    application.state.model_uri = model_uri
+    logger.info("Loaded %s", model_uri)
+    try:
+        yield
+    finally:
+        application.state.model = None
+
+
+app = FastAPI(title="Food11 API", lifespan=lifespan)
 app.state.model = None
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI)
-    mlflow.set_tracking_uri(tracking_uri)
-    app.state.model = mlflow.pyfunc.load_model(MODEL_URI)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    if app.state.model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
     return {"status": "ok"}
+
+
+def classify(contents: bytes, model) -> dict[str, float | str]:
+    try:
+        with Image.open(io.BytesIO(contents)) as uploaded_image:
+            image = uploaded_image.convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid image file") from exc
+
+    tensor = image_transform(image)
+    image_batch = np.asarray(tensor.unsqueeze(0).numpy(), dtype=np.float32)
+    prediction = model.predict(image_batch)
+    if hasattr(prediction, "values"):
+        prediction = prediction.values
+    logits = np.asarray(prediction, dtype=np.float64)
+    if logits.shape == (1, len(CLASS_NAMES)):
+        logits = logits[0]
+    if logits.shape != (len(CLASS_NAMES),) or not np.isfinite(logits).all():
+        raise HTTPException(status_code=500, detail="Model returned invalid class scores")
+
+    # ResNet returns logits. Subtracting their maximum prevents exponential overflow.
+    probabilities = np.exp(logits - logits.max())
+    probabilities /= probabilities.sum()
+    predicted_index = int(np.argmax(probabilities))
+    return {
+        "category": CLASS_NAMES[predicted_index],
+        "confidence": round(float(probabilities[predicted_index]), 6),
+    }
 
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)) -> dict[str, float | str]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="No image file supplied")
-
-    try:
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid image file") from exc
-
-    tensor = image_transform(image)
-    image_batch = np.asarray(tensor.unsqueeze(0).numpy(), dtype=np.float32)
-
     model = app.state.model
     if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded")
-
-    prediction = model.predict(image_batch)
-    if hasattr(prediction, "values"):
-        prediction = prediction.values
-
-    prediction = np.asarray(prediction)
-    if prediction.ndim == 2 and prediction.shape[0] == 1:
-        prediction = prediction[0]
-    if prediction.ndim == 0:
-        prediction = np.asarray([prediction])
-
-    predicted_index = int(np.argmax(prediction))
-    confidence = float(np.max(prediction))
-
-    if predicted_index >= len(CLASS_NAMES):
-        category = str(predicted_index)
-    else:
-        category = CLASS_NAMES[predicted_index]
-
-    return {"category": category, "confidence": round(confidence, 6)}
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return await run_in_threadpool(classify, await file.read(), model)

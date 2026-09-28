@@ -2,7 +2,7 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.12.10
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

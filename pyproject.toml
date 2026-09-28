@@ -1,7 +1,7 @@
 [project]
 name = "mlops-lab-1"
 version = "0.1.0"
-description = "Add your description here"
+description = "Food-11 training, MLflow tracking, and Docker Compose inference"
 readme = "README.md"
 authors = [
     { name = "MarioAouad", email = "mario2004aouad@gmail.com" }
@@ -9,12 +9,13 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
-    "mlflow>=3.16.0",
+    "mlflow==3.16.0",
+    "numpy>=2.5.3",
     "pillow>=11.3.0",
     "python-multipart>=0.0.32",
     "scikit-learn>=1.9.1",
-    "torch>=2.14.0",
-    "torchvision>=0.29.0",
+    "torch==2.14.0",
+    "torchvision==0.29.0",
     "uvicorn>=0.52.4",
 ]
 
@@ -24,3 +25,15 @@ mlops-lab-1 = "mlops_lab_1:main"
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["httpx>=0.28.1,<1"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }
+torchvision = { index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }
