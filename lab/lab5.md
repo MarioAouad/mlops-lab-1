@@ -69,3 +69,53 @@ https://github.com/MarioAouad/mlops-lab-1/pull/1
 The test check failed, smoke and push were skipped, and GitHub reported the PR's mergeable_state as blocked. The branch had no merge conflict, but the required checks prevented merging.
 This gives the team a shared, enforced check of the proposed code rather than relying on each person to remember to run tests locally.
 We then restored the correct mapping and pushed the fix before merging.
+The fixed PR passed its required checks and was squash-merged into main as b6fa80a9b41405eb99b3f2c856069d5184a3dacd.
+
+Question 10: For each candidate, what did the gate decide, and with which numbers? With your test-set size, how many accuracy points does 2 * se represent?
+
+These experiments use the unchanged Food-11 mini dataset and its evaluation split of 1,096 images. Its existing cross-split duplicates, reported in Question 3, remain a limitation of these accuracy measurements.
+The active Compose registry's champion is food11 version 2. Its import run had no test_accuracy because the Lab 4 bootstrap copied artifacts but not metrics.
+We verified that the imported and original model.pth files have identical SHA-256 hashes, then copied the original run's recorded test_accuracy into the import run and added provenance tags. The original local database was read in read-only mode and the champion alias was unchanged.
+Original run: 8eadc6a2e9eb4237b7a81cfafccecdaa. Compose import run: 5677a329b88a4a7882324367e9fc45e3.
+Verified model SHA-256: 6425eaaa6a3e8152126f29ee4f28397b1a475327bfde971eb5a2658aa2daaafa.
+
+Champion accuracy p = 0.823905109489051 (82.3905%).
+With n = 1096, se = sqrt(p * (1 - p) / n) = 0.01150553183544775.
+Therefore 2 * se = 0.0230110636708955, or 2.3011 percentage points.
+A candidate must reach at least 0.8469161731599465 (84.6916%) to be promoted.
+
+| Candidate version | Run ID | Learning rate | Epochs | Test accuracy | Gate decision |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 49cc7a7b44e74039b22a6b3220c1c1f0 | 0.0000001 | 1 | 9.8540% | challenger; champion stays at version 2 |
+
+The script records the decision, both accuracies, the previous champion version, test-set size, standard error and threshold as promotion.* tags on each candidate version.
+
+Question 11: promote.py needs to reach your MLflow server, so it cannot run in GitHub's cloud runners while MLflow lives on your laptop. Name two ways to make it run automatically after training.
+
+One option is a local training script that trains, registers the resulting model, and invokes promote.py after successful training. All steps can reach the same local MLflow server.
+Another is a self-hosted GitHub Actions runner on the training machine or its network, which runs promotion after training and registration complete.
+A hosted MLflow server such as DagsHub would also allow a cloud workflow to reach the registry with the appropriate credentials.
+
+Question 12: Draw the pipeline you now have, from git push to a running container. Mark which steps are automatic, which still need a human, and where the code version and the model version are decided.
+
+```mermaid
+flowchart TD
+    A[Human: git push or open a PR] --> B[Automatic: checkout the Git commit]
+    B --> C[Automatic: uv sync, Ruff, pytest, Compose validation]
+    C --> D[Automatic: build image and smoke-test with SKIP_MODEL=1]
+    D --> E{Push to main?}
+    E -->|Yes| F[Automatic: publish GHCR image tagged with commit SHA]
+    E -->|No| G[Required PR checks; human merges when green]
+    G --> B
+    F --> H[Human: pull and start the chosen image]
+    H --> I[Automatic at API startup: load models:/food11@champion]
+    I --> J[Running inference container]
+    K[Human: validate real data and run training locally] --> L[Human: register candidate and invoke promote.py]
+    L --> M[Automatic inside script: compare accuracies using the two-SE gate]
+    M --> N[Assign champion or challenger; record version tags]
+    N --> O[Human: restart inference to load the current champion]
+    O --> I
+```
+
+The code revision is chosen by the Git commit used for the build and its SHA image tag. The model version is chosen separately by the champion alias when inference starts.
+The image pipeline does not automatically deploy the container, train the real model, invoke promotion, or restart inference after an alias change.
