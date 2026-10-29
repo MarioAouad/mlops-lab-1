@@ -57,7 +57,7 @@ class ServingTests(unittest.TestCase):
 
     def test_readiness_checks_the_loaded_model(self):
         self.assertEqual(self.client.get("/health").status_code, 200)
-        serve.app.state.model = None
+        serve.model = None
         self.assertEqual(self.client.get("/health").status_code, 503)
         self.assertEqual(self.predict().status_code, 503)
 
@@ -77,16 +77,21 @@ class StartupTests(unittest.TestCase):
         sleep.assert_called_once_with(0.1)
 
     def test_missing_alias_fails_without_retry(self):
-        with patch.object(serve, "load_model", side_effect=MlflowException("missing alias", RESOURCE_DOES_NOT_EXIST)) as load, patch.object(serve.time, "sleep") as sleep:
-            with self.assertRaises(MlflowException):
-                serve.load_model_with_retry("models:/food11@champion", 3, 1)
+        with (
+            patch.object(serve, "load_model", side_effect=MlflowException("missing alias", RESOURCE_DOES_NOT_EXIST)) as load,
+            patch.object(serve.time, "sleep") as sleep,
+            self.assertRaises(MlflowException),
+        ):
+            serve.load_model_with_retry("models:/food11@champion", 3, 1)
         self.assertEqual(load.call_count, 1)
         sleep.assert_not_called()
 
     def test_retries_are_bounded(self):
-        with patch.object(serve, "load_model", side_effect=MlflowException("offline", INTERNAL_ERROR)) as load:
-            with self.assertRaises(MlflowException):
-                serve.load_model_with_retry("models:/food11@champion", 2, 0)
+        with (
+            patch.object(serve, "load_model", side_effect=MlflowException("offline", INTERNAL_ERROR)) as load,
+            self.assertRaises(MlflowException),
+        ):
+            serve.load_model_with_retry("models:/food11@champion", 2, 0)
         self.assertEqual(load.call_count, 2)
 
     def test_lifespan_uses_environment_and_clears_model(self):
@@ -100,7 +105,9 @@ class StartupTests(unittest.TestCase):
 
     def test_mismatched_model_labels_reject_startup(self):
         model = SimpleNamespace(metadata=SimpleNamespace(metadata={"class_names": ["wrong"]}))
-        with patch.object(serve, "load_model", return_value=model):
-            with self.assertRaises(ValueError):
-                with TestClient(serve.app):
-                    pass
+        with (
+            patch.object(serve, "load_model", return_value=model),
+            self.assertRaises(ValueError),
+            TestClient(serve.app),
+        ):
+            pass

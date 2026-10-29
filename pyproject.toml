@@ -27,7 +27,11 @@ requires = ["uv_build>=0.12.10,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = ["httpx>=0.28.1,<1"]
+dev = [
+    "httpx>=0.28.1,<1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

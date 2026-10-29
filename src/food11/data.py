@@ -1,9 +1,8 @@
 import argparse
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from PIL import Image
-
 
 CATEGORIES = (
     "Bread",
@@ -22,6 +21,20 @@ SPLITS = ("training", "evaluation", "validation")
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 IMAGE_SIZE = (128, 128)
 MINI_LIMIT = 100
+CLASSES = list(CATEGORIES)
+
+
+def category_from_filename(filename: str) -> str:
+    """Return the Food-11 category encoded in a filename, e.g. '3_120.jpg' -> 'Egg'."""
+    label = Path(filename).stem.split("_", 1)[0]
+    if not label.isdigit() or int(label) not in range(len(CLASSES)):
+        raise ValueError(f"Could not determine a Food-11 label from {filename}")
+    return CLASSES[int(label)]
+
+
+def resize_image(img: Image.Image, size: int = 128) -> Image.Image:
+    """Return an RGB image of size x size."""
+    return img.convert("RGB").resize((size, size))
 
 
 def prepare_dataset(project_root: Path, *, overwrite: bool = False) -> None:
@@ -43,10 +56,8 @@ def prepare_dataset(project_root: Path, *, overwrite: bool = False) -> None:
         for source in sorted(split_root.iterdir()):
             if not source.is_file() or source.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
-            label = source.stem.split("_", 1)[0]
-            if not label.isdigit() or int(label) not in range(len(CATEGORIES)):
-                raise ValueError(f"Could not determine a Food-11 label from {source.name}")
-            files_by_category[CATEGORIES[int(label)]].append(source)
+            category = category_from_filename(source.name)
+            files_by_category[category].append(source)
 
         if any(not sources for sources in files_by_category.values()):
             raise ValueError(f"Dataset split {split} must contain all eleven categories")
@@ -72,7 +83,7 @@ def prepare_dataset(project_root: Path, *, overwrite: bool = False) -> None:
             for index, source in enumerate(sources):
                 destination = processed_category / source.name
                 with Image.open(source) as image:
-                    image.convert("RGB").resize(IMAGE_SIZE).save(destination, format="JPEG")
+                    resize_image(image, size=IMAGE_SIZE[0]).save(destination, format="JPEG")
 
                 if index < MINI_LIMIT:
                     shutil.copy2(destination, mini_category / source.name)

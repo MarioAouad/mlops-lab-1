@@ -23,6 +23,8 @@ class TrainingTests(unittest.TestCase):
     def test_validation_split_mapping_must_match_training(self):
         good = SimpleNamespace(classes=list(CATEGORIES))
         bad = SimpleNamespace(classes=list(CATEGORIES)[:-1])
-        with patch.object(train.datasets, "ImageFolder", side_effect=[good, bad, good]):
-            with self.assertRaisesRegex(ValueError, "validation"):
-                train.build_dataloaders(Path("unused"), 32)
+        with (
+            patch.object(train.datasets, "ImageFolder", side_effect=[good, bad, good]),
+            self.assertRaisesRegex(ValueError, "validation"),
+        ):
+            train.build_dataloaders(Path("unused"), 32)

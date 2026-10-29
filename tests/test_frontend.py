@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 import requests
 
-
 spec = importlib.util.spec_from_file_location("food11_frontend", Path(__file__).resolve().parents[1] / "frontend/app.py")
 frontend = importlib.util.module_from_spec(spec)
 with patch.dict("sys.modules", {"streamlit": Mock()}):

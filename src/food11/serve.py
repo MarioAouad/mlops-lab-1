@@ -3,8 +3,8 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-import mlflow
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from mlflow.exceptions import MlflowException
@@ -14,12 +14,15 @@ from starlette.concurrency import run_in_threadpool
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 
+import mlflow
+
 from .data import CATEGORIES
 
 DEFAULT_TRACKING_URI = "http://127.0.0.1:5001"
 DEFAULT_MODEL_URI = "models:/food11@champion"
 CLASS_NAMES = list(CATEGORIES)
 logger = logging.getLogger(__name__)
+model = None
 
 image_transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -47,23 +50,29 @@ def load_model_with_retry(model_uri: str, attempts: int, delay: float):
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    global model
+    model = None
+    application.state.model = None
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI))
     model_uri = os.getenv("MODEL_URI", DEFAULT_MODEL_URI)
-    model = await run_in_threadpool(
-        load_model_with_retry,
-        model_uri,
-        int(os.getenv("MODEL_LOAD_ATTEMPTS", "12")),
-        float(os.getenv("MODEL_LOAD_RETRY_DELAY", "5")),
-    )
-    metadata = model.metadata.metadata or {}
-    if metadata.get("class_names", CLASS_NAMES) != CLASS_NAMES:
-        raise ValueError("The model's class mapping does not match Food-11")
-    application.state.model = model
+    if not os.environ.get("SKIP_MODEL"):
+        model = await run_in_threadpool(
+            load_model_with_retry,
+            model_uri,
+            int(os.getenv("MODEL_LOAD_ATTEMPTS", "12")),
+            float(os.getenv("MODEL_LOAD_RETRY_DELAY", "5")),
+        )
+        metadata = model.metadata.metadata or {}
+        if metadata.get("class_names", CLASS_NAMES) != CLASS_NAMES:
+            model = None
+            raise ValueError("The model's class mapping does not match Food-11")
+        application.state.model = model
+        logger.info("Loaded %s", model_uri)
     application.state.model_uri = model_uri
-    logger.info("Loaded %s", model_uri)
     try:
         yield
     finally:
+        model = None
         application.state.model = None
 
 
@@ -73,7 +82,7 @@ app.state.model = None
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    if app.state.model is None:
+    if model is None and not os.environ.get("SKIP_MODEL"):
         raise HTTPException(status_code=503, detail="Model not loaded")
     return {"status": "ok"}
 
@@ -107,10 +116,10 @@ def classify(contents: bytes, model) -> dict[str, float | str]:
 
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)) -> dict[str, float | str]:
+async def predict(file: Annotated[UploadFile, File()]) -> dict[str, float | str]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="No image file supplied")
-    model = app.state.model
-    if model is None:
+    loaded_model = model
+    if loaded_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    return await run_in_threadpool(classify, await file.read(), model)
+    return await run_in_threadpool(classify, await file.read(), loaded_model)

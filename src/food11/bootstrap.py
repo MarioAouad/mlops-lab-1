@@ -9,9 +9,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
-import mlflow
 from mlflow.exceptions import MlflowException
 from mlflow.models import Model
+
+import mlflow
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
