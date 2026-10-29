@@ -56,3 +56,16 @@ Question 8: Why does the push job declare permissions explicitly? What could a c
 
 The push job needs contents: read to check out code and packages: write to publish the image. Declaring these permissions gives the job only the rights it needs.
 A compromised step with broad write access could alter repository code, publish malicious releases or packages, or change other resources permitted by its token.
+
+The publishing pipeline completed successfully:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838844573
+The commit-tagged image is ghcr.io/marioaouad/mlops-lab-1:46942e0dbb637fe7e6221dff5c79f8b5e684d59a.
+
+Question 9: What does the pull request page show? Could you still merge? What does that change for a team compared to "everybody runs the tests on their laptop before pushing"?
+
+We enabled a protection rule for main that requires a pull request and successful test and smoke checks, including for administrators. No extra approving reviewer is required for this individual lab.
+On branch lab5-branch-protection, we deliberately shifted the filename class mapping by one category and opened:
+https://github.com/MarioAouad/mlops-lab-1/pull/1
+The test check failed, smoke and push were skipped, and GitHub reported the PR's mergeable_state as blocked. The branch had no merge conflict, but the required checks prevented merging.
+This gives the team a shared, enforced check of the proposed code rather than relying on each person to remember to run tests locally.
+We then restored the correct mapping and pushed the fix before merging.
