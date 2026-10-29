@@ -33,3 +33,5 @@ Question 5: The smoke job has needs: test. What happens to it if a unit test fai
 
 If a unit test fails, the test job fails and GitHub skips smoke because its dependency did not succeed.
 Without needs, GitHub can run smoke independently of test, so the image might build and start even while unit tests fail.
+
+The first GitHub run demonstrated this: test failed during collection because the pytest command did not include the repository root on its import path, and smoke was skipped. Adding pythonpath = ["."] to the project's pytest settings fixes the src imports for the handout's uv run pytest -q command.
