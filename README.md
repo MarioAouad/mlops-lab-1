@@ -166,3 +166,31 @@ The root Dockerfile is the main multi-stage inference image.
 `Dockerfile.single-stage` remains available for the Lab 3 comparison. Both use the
 same lockfile and virtual environment. Datasets, local environments, Git history,
 and model artifacts are excluded from the inference build context.
+
+## Lab 5: CI/CD and model promotion
+
+GitHub Actions runs Ruff, pytest (including the earlier regression tests), and
+Compose configuration validation. A dependent job builds and smoke-tests the API
+with `SKIP_MODEL=1`; in that mode health returns 200 and predictions require an
+injected model. Normal serving still loads `food11@champion` from MLflow.
+Successful pushes to `main` publish
+`ghcr.io/marioaouad/mlops-lab-1:<commit-sha>`. Main requires a pull request and
+passing `test` and `smoke` checks. Deployment and model promotion remain manual.
+
+```powershell
+uv run ruff check src tests
+uv run pytest -q
+uv run python src/food11/validate_data.py BigData/food11_processed_mini
+uv run python src/food11/promote.py --version <candidate-version>
+```
+
+The real mini dataset currently fails the duplicate check with 43 cross-split
+duplicate pairs already present in the source data; the validator reports this
+with exit code 1. The original datasets are preserved. CI tests the data contract
+on generated temporary data and does not certify the real dataset.
+
+Promotion uses `test_accuracy` and the evaluation-split size (1,096 for the current
+mini data). Supply `--dataset <processed-folder>` or `--test-size <n>` for another
+evaluation split, and compare metrics measured on the same split. The script
+records the decision, accuracies, standard error and threshold as candidate model
+version tags. See `lab/lab5.md` for the observed CI and promotion results.
