@@ -42,7 +42,7 @@ After fixing test collection, the first successful run took 1 minute 23 seconds 
 https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838481200
 The second run, triggered by git commit --allow-empty -m "ci", took 1 minute 28 seconds:
 https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838666653
-The second run restored the uv cache. Package installation inside uv sync decreased from 786 ms to 439 ms, although the complete sync step was about 3 seconds in both runs.
+The second run restored the uv cache. Package installation inside uv sync decreased from 689 ms to 439 ms, although the complete sync step was about 3 seconds in both runs.
 The Docker build decreased from 35 seconds to 28 seconds, but this smoke job does not configure a shared Docker layer cache, so that difference alone is not evidence of cross-run Docker caching.
 The overall second run was five seconds slower because other work and runner timing varied; caching does not guarantee that the complete run will always be faster.
 
@@ -60,6 +60,8 @@ A compromised step with broad write access could alter repository code, publish 
 The publishing pipeline completed successfully:
 https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838844573
 The commit-tagged image is ghcr.io/marioaouad/mlops-lab-1:46942e0dbb637fe7e6221dff5c79f8b5e684d59a.
+The local docker pull succeeded with digest sha256:05828723bd759c47424effabe56b249a6fb8013205856cbbd492f3c12909a9f6.
+Running this published image locally with SKIP_MODEL=1 gave health 200 and predict 503. Running it on the Compose network against the real MLflow champion gave health 200 and a successful Bread prediction with confidence 0.995969. Both temporary verification containers were removed afterward.
 
 Question 9: What does the pull request page show? Could you still merge? What does that change for a team compared to "everybody runs the tests on their laptop before pushing"?
 
@@ -87,8 +89,11 @@ A candidate must reach at least 0.8469161731599465 (84.6916%) to be promoted.
 | Candidate version | Run ID | Learning rate | Epochs | Test accuracy | Gate decision |
 | --- | --- | --- | --- | --- | --- |
 | 3 | 49cc7a7b44e74039b22a6b3220c1c1f0 | 0.0000001 | 1 | 9.8540% | challenger; champion stays at version 2 |
+| 4 | a2d693dc6e8948b091d46845057ebd74 | 0.0001 | 5 | 81.5693% | challenger; champion stays at version 2 |
 
 The script records the decision, both accuracies, the previous champion version, test-set size, standard error and threshold as promotion.* tags on each candidate version.
+After both decisions, champion points to version 2 and challenger points to version 4. Version 3 retains its recorded challenger decision in its tags.
+Both candidates used batch size 32 and seed 42. We invoked src/food11/promote.py --version 3 and then --version 4 against the local Compose MLflow server at http://127.0.0.1:5001.
 
 Question 11: promote.py needs to reach your MLflow server, so it cannot run in GitHub's cloud runners while MLflow lives on your laptop. Name two ways to make it run automatically after training.
 
