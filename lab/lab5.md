@@ -35,3 +35,14 @@ If a unit test fails, the test job fails and GitHub skips smoke because its depe
 Without needs, GitHub can run smoke independently of test, so the image might build and start even while unit tests fail.
 
 The first GitHub run demonstrated this: test failed during collection because the pytest command did not include the repository root on its import path, and smoke was skipped. Adding pythonpath = ["."] to the project's pytest settings fixes the src imports for the handout's uv run pytest -q command.
+
+Question 7: Why tag with the commit SHA rather than latest? Describe a concrete situation where latest leads two machines to run different code.
+
+The commit SHA identifies which code revision an image was built from and allows us to select that release explicitly. An image digest identifies the exact image bytes.
+The latest tag can be reassigned. Machine A can pull latest on Monday and keep that image cached, while machine B pulls latest after Tuesday's update. Both say latest but run different code.
+Our registry image name is ghcr.io/marioaouad/mlops-lab-1, using lowercase as required by the handout.
+
+Question 8: Why does the push job declare permissions explicitly? What could a compromised step do with a token that had write access to everything in the repo?
+
+The push job needs contents: read to check out code and packages: write to publish the image. Declaring these permissions gives the job only the rights it needs.
+A compromised step with broad write access could alter repository code, publish malicious releases or packages, or change other resources permitted by its token.
