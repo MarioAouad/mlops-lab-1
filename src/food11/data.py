@@ -29,7 +29,7 @@ def category_from_filename(filename: str) -> str:
     label = Path(filename).stem.split("_", 1)[0]
     if not label.isdigit() or int(label) not in range(len(CLASSES)):
         raise ValueError(f"Could not determine a Food-11 label from {filename}")
-    return CLASSES[int(label)]
+    return CLASSES[(int(label) + 1) % len(CLASSES)]
 
 
 def resize_image(img: Image.Image, size: int = 128) -> Image.Image:

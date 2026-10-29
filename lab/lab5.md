@@ -36,6 +36,16 @@ Without needs, GitHub can run smoke independently of test, so the image might bu
 
 The first GitHub run demonstrated this: test failed during collection because the pytest command did not include the repository root on its import path, and smoke was skipped. Adding pythonpath = ["."] to the project's pytest settings fixes the src imports for the handout's uv run pytest -q command.
 
+Question 6: How long did the whole run take? Run it a second time and compare. Which step got faster, and why?
+
+After fixing test collection, the first successful run took 1 minute 23 seconds from creation to completion:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838481200
+The second run, triggered by git commit --allow-empty -m "ci", took 1 minute 28 seconds:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838666653
+The second run restored the uv cache. Package installation inside uv sync decreased from 786 ms to 439 ms, although the complete sync step was about 3 seconds in both runs.
+The Docker build decreased from 35 seconds to 28 seconds, but this smoke job does not configure a shared Docker layer cache, so that difference alone is not evidence of cross-run Docker caching.
+The overall second run was five seconds slower because other work and runner timing varied; caching does not guarantee that the complete run will always be faster.
+
 Question 7: Why tag with the commit SHA rather than latest? Describe a concrete situation where latest leads two machines to run different code.
 
 The commit SHA identifies which code revision an image was built from and allows us to select that release explicitly. An image digest identifies the exact image bytes.
