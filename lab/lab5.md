@@ -36,6 +36,16 @@ Without needs, GitHub can run smoke independently of test, so the image might bu
 
 The first GitHub run demonstrated this: test failed during collection because the pytest command did not include the repository root on its import path, and smoke was skipped. Adding pythonpath = ["."] to the project's pytest settings fixes the src imports for the handout's uv run pytest -q command.
 
+Question 6: How long did the whole run take? Run it a second time and compare. Which step got faster, and why?
+
+After fixing test collection, the first successful run took 1 minute 23 seconds from creation to completion:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838481200
+The second run, triggered by git commit --allow-empty -m "ci", took 1 minute 28 seconds:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838666653
+The second run restored the uv cache. Package installation inside uv sync decreased from 786 ms to 439 ms, although the complete sync step was about 3 seconds in both runs.
+The Docker build decreased from 35 seconds to 28 seconds, but this smoke job does not configure a shared Docker layer cache, so that difference alone is not evidence of cross-run Docker caching.
+The overall second run was five seconds slower because other work and runner timing varied; caching does not guarantee that the complete run will always be faster.
+
 Question 7: Why tag with the commit SHA rather than latest? Describe a concrete situation where latest leads two machines to run different code.
 
 The commit SHA identifies which code revision an image was built from and allows us to select that release explicitly. An image digest identifies the exact image bytes.
@@ -46,3 +56,16 @@ Question 8: Why does the push job declare permissions explicitly? What could a c
 
 The push job needs contents: read to check out code and packages: write to publish the image. Declaring these permissions gives the job only the rights it needs.
 A compromised step with broad write access could alter repository code, publish malicious releases or packages, or change other resources permitted by its token.
+
+The publishing pipeline completed successfully:
+https://github.com/MarioAouad/mlops-lab-1/actions/runs/40838844573
+The commit-tagged image is ghcr.io/marioaouad/mlops-lab-1:46942e0dbb637fe7e6221dff5c79f8b5e684d59a.
+
+Question 9: What does the pull request page show? Could you still merge? What does that change for a team compared to "everybody runs the tests on their laptop before pushing"?
+
+We enabled a protection rule for main that requires a pull request and successful test and smoke checks, including for administrators. No extra approving reviewer is required for this individual lab.
+On branch lab5-branch-protection, we deliberately shifted the filename class mapping by one category and opened:
+https://github.com/MarioAouad/mlops-lab-1/pull/1
+The test check failed, smoke and push were skipped, and GitHub reported the PR's mergeable_state as blocked. The branch had no merge conflict, but the required checks prevented merging.
+This gives the team a shared, enforced check of the proposed code rather than relying on each person to remember to run tests locally.
+We then restored the correct mapping and pushed the fix before merging.
